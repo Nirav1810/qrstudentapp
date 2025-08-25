@@ -6,6 +6,7 @@ import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import ScannerScreen from '../screens/ScannerScreen';
+import FaceLivelinessScreen from '../screens/FaceLivelinessScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -17,6 +18,14 @@ const AppNavigator = () => {
         <Stack.Screen name="Register" component={RegisterScreen} />
         <Stack.Screen name="Dashboard" component={DashboardScreen} />
         <Stack.Screen name="Scanner" component={ScannerScreen} options={{ headerShown: false }} />
+        <Stack.Screen 
+          name="FaceLiveliness" 
+          component={FaceLivelinessScreen} 
+          options={{ 
+            title: 'Face Verification',
+            headerShown: false 
+          }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

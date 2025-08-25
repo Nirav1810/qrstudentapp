@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Alert, Text, TouchableOpacity } from 'react-native';
-import { CameraView, useCameraPermissions, BarcodeScanningResult } from 'expo-camera';
+import { View, StyleSheet, Alert, Text, TouchableOpacity, Button, Modal } from 'react-native';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import apiClient from '../api/client';
+import FaceLivelinessScreen from './FaceLivelinessScreen';
 
 const ScannerScreen = ({ navigation }) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
+  const [showFaceVerification, setShowFaceVerification] = useState(false);
+  const [qrToken, setQrToken] = useState(null);
+  const [courseId] = useState('CS101'); // Hardcoded for now
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     if (!permission?.granted) {
@@ -14,28 +19,55 @@ const ScannerScreen = ({ navigation }) => {
     }
   }, []);
 
-  const handleBarCodeScanned = async (scanningResult: BarcodeScanningResult) => {
-    if (scanned) return;
-    setScanned(true); // Prevent multiple scans
+  const handleBarCodeScanned = async (scanningResult) => {
+    if (scanned || isProcessing) return;
+    
+    setScanned(true);
+    setIsProcessing(true);
+    setQrToken(scanningResult.data);
+    
+    // Navigate to face verification after scanning
+    setShowFaceVerification(true);
+  };
 
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      // For now, let's hardcode a courseId. In a real app, the student would select this.
-      const courseId = 'CS101';
-
-      const response = await apiClient.post('/attendance/mark',
-        { qrToken: scanningResult.data, courseId },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      Alert.alert('Success', response.data.message, [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
-    } catch (error) {
-      Alert.alert('Error', error.response?.data?.error || 'Failed to mark attendance.', [
-        { text: 'Try Again', onPress: () => setScanned(false) }, // Allow user to try again
+  const handleFaceVerificationComplete = async (success) => {
+    setShowFaceVerification(false);
+    
+    if (success) {
+      // Face verification successful, now mark attendance
+      try {
+        const token = await AsyncStorage.getItem('userToken');
+        const response = await apiClient.post('/attendance/mark',
+          { qrToken: qrToken, courseId },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        
+        Alert.alert('Success', response.data.message, [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ]);
+      } catch (error) {
+        Alert.alert('Error', error.response?.data?.error || 'Failed to mark attendance.', [
+          { text: 'Try Again', onPress: () => {
+            setScanned(false);
+            setIsProcessing(false);
+          }},
+        ]);
+      }
+    } else {
+      // Face verification failed
+      Alert.alert('Verification Failed', 'Face verification failed. Please try again.', [
+        { text: 'Try Again', onPress: () => {
+          setScanned(false);
+          setIsProcessing(false);
+        }},
       ]);
     }
+  };
+
+  const cancelFaceVerification = () => {
+    setShowFaceVerification(false);
+    setScanned(false);
+    setIsProcessing(false);
   };
 
   if (!permission) {
@@ -53,26 +85,52 @@ const ScannerScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <CameraView
-        onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-        barcodeTypes={['qr']}
-        style={StyleSheet.absoluteFillObject}
+      {!showFaceVerification ? (
+        <>
+          <CameraView
+            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+            barcodeTypes={['qr']}
+            style={StyleSheet.absoluteFillObject}
+          >
+            <View style={styles.overlay}>
+              <Text style={styles.overlayText}>Scan the QR Code</Text>
+              <View style={styles.scanBox} />
+            </View>
+          </CameraView>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Text style={styles.backButtonText}>Cancel</Text>
+          </TouchableOpacity>
+        </>
+      ) : null}
+
+      {/* Face Verification Modal */}
+      <Modal
+        animationType="slide"
+        transparent={false}
+        visible={showFaceVerification}
+        onRequestClose={cancelFaceVerification}
       >
-        <View style={styles.overlay}>
-          <Text style={styles.overlayText}>Scan the QR Code</Text>
-          <View style={styles.scanBox} />
-        </View>
-      </CameraView>
-      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-        <Text style={styles.backButtonText}>Cancel</Text>
-      </TouchableOpacity>
+        <FaceLivelinessScreen 
+          onComplete={handleFaceVerificationComplete}
+          onCancel={cancelFaceVerification}
+          qrToken={qrToken}
+        />
+      </Modal>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: 'black' },
-  permissionContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'black' },
+  container: { 
+    flex: 1, 
+    backgroundColor: 'black' 
+  },
+  permissionContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    backgroundColor: 'black' 
+  },
   overlay: {
     flex: 1,
     justifyContent: 'center',
